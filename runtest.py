@@ -74,7 +74,7 @@ class TestTempSplitAndCreateFile(unittest.TestCase):
     self.assertEqual('chapter', getChapter('fdajklfsdj#[chapter:chapter]#'))
 
   def test_addImageIfNeed(self):
-    self.assertEqual('<img src="path/innerPath/img.jpg"/>', addImageIfNeed('ax#[img:innerPath/img.jpg]#suffix', 'path'))
+    self.assertEqual('<img src="images/img.jpg" alt="img.jpg"/>', addImageIfNeed('ax#[img:md/img.jpg]#suffix', ''))
     self.assertEqual('def test_split(self):', addImageIfNeed('def test_split(self):', 'path'))
 
   def test_isBlank(self):
@@ -109,7 +109,13 @@ class TestTempSplitAndCreateFile(unittest.TestCase):
           index += 1
           title = getChapter(tmp)
           tmp = f.readline()
+  
+  @unittest.skip('tmp')
+  def test_readMetaInfo(self):
+    print('MetaInfo:')
+    print(readMetaInfo('epubDir/head.txt'))
 
+@unittest.skip('tmp')
 class TestTocncx(unittest.TestCase):
   @unittest.skip('succ')
   def test_create(self):    
@@ -117,16 +123,28 @@ class TestTocncx(unittest.TestCase):
     print(toc.create())
     
 class TestContentOpf(unittest.TestCase):
-#  @unittest.skip(1)
+  @unittest.skip(1)
   def test_create(self):
-    opf = ContentOpf('title', 'creator', 'uid', language='zh-CN')
+    opf = ContentOpf('title', 'uid', 'creator', language='zh-CN')
     print(opf.create())
 
+  @unittest.skip(1)
   def test_createItem(self):
-    opf = ContentOpf('title', 'creator', 'uid', language='zh-CN')
+    opf = ContentOpf('title', 'uid', 'creator', language='zh-CN')
     ncx = opf.createItem('ncx', 'toc.ncx', 'application/x-dtbncx+xml').create()
     self.assertEqual('<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>', ncx)
     
+#@unittest.skip('tmp')
+class TestApplication(unittest.TestCase):
+  def test_create(self):
+    builder = EpubBuilder('epubDir/md.txt')
+    builder.createFolders()
+    builder.createMimetype()
+    builder.createContainer()
+    builder.createChapters()
+    builder.createTOCncx()
+    builder.createContentOPF()
+    create_archive('md', 'epubDir/003epubtmp/')
 
 if __name__ == "__main__":
   unittest.main()

@@ -8,16 +8,30 @@
 
 import os
 import re
+import shutil
+import zipfile
 
 from pikaurdlib.xmldocument import *
 from pikaurdlib import util
 
 class EpubBuilder:
   '''Using text file with some tags like "<img> <chapter>" to build an epub file'''
-  __version__ = (0, 0, 0)
+  __version__ = (0, 0, 3)
   def __init__(self, path='', uuid=1):
-    self.path = os.path.join(path, '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
+    self.txtPath = path
+    self.path = os.path.join(os.path.dirname(path), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
     self.uuid = uuid
+    self.metaInfo = readMetaInfo(path)
+    self.oebpsPath = os.path.join(self.path, 'OEBPS')
+
+  def createFolders(self):
+    leaf = ['META-INF', 'OEBPS', 'OEBPS/css', 'OEBPS/images']
+    for e in leaf:
+      os.makedirs(os.path.join(self.path, e))
+    if self.metaInfo.get('imgDir') != None:
+      imgDirPath = os.path.join(os.path.dirname(self.txtPath), self.metaInfo.get('imgDir'))
+      for img in [e for e in os.listdir(imgDirPath) if not e.startswith('.')]:
+        shutil.copy2(imgDirPath+os.sep+img, os.path.join(self.path,'OEBPS/images'))
 
   def createMimetype(self):
     name = 'mimetype'
@@ -30,23 +44,29 @@ class EpubBuilder:
     container.addAttribute('version', '1.0')
     container.addAttribute('xmlns', 'urn:oasis:names:tc:opendocument:xmlns:container')
     rootFiles = XMLElement('rootfiles')
-    rootFiles.addElement(XMLElement('rootfile').addAttribute('full-path', 'OEBPS/epb.opf').addAttribute('media-type', 'application/oebps-package+xml'))
+    rootFiles.addElement(XMLElement('rootfile').addAttribute('full-path', 'OEBPS/content.opf').addAttribute('media-type', 'application/oebps-package+xml'))
     container.addElement(rootFiles)
     xml.addElement(container)
     createFile('container.xml', xml.create(), os.path.join(self.path, 'META-INF'))
 
-  def createFolders(self):
-    leaf = ['META-INF', 'OEBPS', 'OEBPS/css', 'OEBPS/images']
-    for e in leaf:
-      os.makedirs(os.path.join(self.path, e))
+  def createChapters(self):
+    self.titles = txtParseAndCreateChapter(self.txtPath, path=self.oebpsPath)
 
+  def createTOCncx(self):
+    toc = TOCncx(self.metaInfo.get('title'), self.titles, self.uuid)
+    toc.writeTo(self.oebpsPath)
+
+  def createContentOPF(self):
+    contentOPF = ContentOpf(self.metaInfo.get('title'), self.uuid, EpubBuilder.nameVersion(), 'zh-CN', self.oebpsPath)
+    contentOPF.writeTo()
+    
   @staticmethod
   def nameVersion():
     return 'EpubBuilder at {}'.format(EpubBuilder.__version__)
 
 class Chapter:
   ''' A epub chapater object '''
-  def __init__(self, index, title, content):
+  def __init__(self, index, title, content, path=''):
     '''
     create a new object
     index for toc. Index of current chapter
@@ -54,6 +74,7 @@ class Chapter:
     self.index = index
     self.title = title
     self.content = self.__convertContentToXML(content)
+    self.path = path
     
 
   def __convertContentToXML(self, content):
@@ -62,7 +83,7 @@ class Chapter:
     return content
 
   def write(self, pretty=False):
-    createFile(self.index+'.xhtml', self.create(pretty), '')
+    createFile(self.index+'.xhtml', self.create(pretty), self.path) 
 
   def __str__(self):
     return self.create(self, False)
@@ -81,7 +102,9 @@ class Chapter:
     #TODO add external module to config format
     body = XMLElement('body')
     body.addAttribute('style', 'white-space:pre-wrap')
-    body.addElement(self.content)
+    div = XMLElement('div')
+    div.addElement(self.content)
+    body.addElement(div)
     html.addElement(body)
     xml.addElement(html)
     return xml.create(pretty)
@@ -92,6 +115,10 @@ class TOCncx:
     self.title = title
     self.chapterTitles = chapterTitles
     self.uid = uid
+
+  def writeTo(self, path):
+    #createFile(name, content, path, encoding)
+    createFile('toc.ncx', self.create(), path)
 
   def create(self):
     xml = XMLDocument('<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">')
@@ -152,13 +179,16 @@ class ContentOpf:
   def __init__(self, title, uid, creator='EpubBuilder', language='en-US', baseDir=''):
     #TODO add cover to epub
     self.title = title
-    self.isbn = uid
+    self.isbn = str(uid)
     self.creator = creator
     self.lang = language
-    self.baseDir = os.path.join(baseDir, 'OEBPS')
+    self.baseDir = baseDir
+
+  def writeTo(self):
+    createFile('content.opf', self.create(), self.baseDir)
 
   def create(self):
-    self.getChapters(self.baseDir)
+    self.getChapters()
     xml = XMLDocument()
     # root tag -> package
     package = XMLElement('package')
@@ -173,17 +203,17 @@ class ContentOpf:
     metadata.addElement(title)
     creator = XMLElement('dc:creator').addElement(XMLText(self.creator))
     metadata.addElement(creator)
-    identifier = XMLElement('dc:idntifier').addAttribute('id', 'isbn').addElement(XMLText(self.title))
+    identifier = XMLElement('dc:identifier').addAttribute('id', 'ISBN').addElement(XMLText(self.isbn))
     metadata.addElement(identifier)
     lang = XMLElement('dc:language').addElement(XMLText(self.lang))
     metadata.addElement(lang)
     package.addElement(metadata)
-    # mainfest
-    mainfest = XMLElement('mainfest')
-    mainfest.addElement(self.__createItem('ncx', 'toc.ncx', 'application/x-dtbncx+xml'))
-    self.__addItems(mainfest)
-    package.addElement(mainfest)
-#    mainfest.addElement(self.__addItem())
+    # manifest
+    manifest = XMLElement('manifest')
+    manifest.addElement(self.__createItem('ncx', 'toc.ncx', 'application/x-dtbncx+xml'))
+    self.__addItems(manifest)
+    package.addElement(manifest)
+#    manifest.addElement(self.__addItem())
     # spine
     package.addElement(self.__createSpine())
     # guide 
@@ -191,11 +221,15 @@ class ContentOpf:
     ##TODO GUIDE for cover and toc
     return xml.create(pretty=True)
 
-  def __addItems(self, mainfest):
+  def __addItems(self, manifest):
     dirPath = self.baseDir + os.sep
     for e in self.chapters:
       # e[:-6] is strip file extensition '.xhmlt'
-      mainfest.addElement(self.__createItem(e[:-6], e, 'application/xhtml+xml'))
+      manifest.addElement(self.__createItem(e[:-6], e, 'application/xhtml+xml'))
+    for e in [i for i in os.listdir(self.baseDir+os.sep+'images') if not i.startswith('.')]:
+      name = os.path.splitext(e)[0]
+      manifest.addElement(self.__createItem(name, os.path.join('images', e), 'image/jpeg'))
+
 
   def __createItem(self, rid, href, mediaType='application/xhtml+xml'):
     item = XMLElement('item')
@@ -220,8 +254,8 @@ class ContentOpf:
       itemref.addAttribute('linear', linear)
     return itemref
 
-  def getChapters(self, path):
-    self.chapters = [e for e in os.listdir() if e.startswith('chapter-') and e.endswith('xhtml')]
+  def getChapters(self):
+    self.chapters = [e for e in os.listdir(self.baseDir) if e.startswith('chapter-') and e.endswith('xhtml')]
 
 #for unit test
   def createItem(self, rid, href, mediaType):
@@ -231,48 +265,39 @@ def createFile(name, content, path, encoding='utf8'):
   with open(os.path.join(path, name), 'w', encoding=encoding) as f:
     f.write(content)
 
-class TextSplitter:
-  '''Split source file'''
-  def getHead(self, fileHandle):
-    '''get meta info (head) from handle'''
-    x = fileHandle.readline()
-    head = []
-    while not self.__headEnd(x):
-      if x.lstrip().startswith('#'):
-        head.append(x)
-      x = fileHandle.readline()
-    return head
-
-  def __headEnd(self, x):
-    return '#[headend]#' in x
-
-def txtParseAndCreateChapter(filePath, encoding='utf8', imgBaseDir=''):
+def txtParseAndCreateChapter(filePath, encoding='utf8', imgBaseDir='', path=''):
   buffer = ''
-  index = 0
+  index = 1
   title = 'info'
   titles = []
   with open(filePath, encoding=encoding) as f:
     tmp = util.encodeXML(f.readline())
+    if not isBlank(getChapter(tmp)):
+      title = getChapter(tmp)
     while not isBlank(tmp):
       while isBlank(getChapter(tmp)) and not isBlank(tmp, True):
         buffer += addImageIfNeed(tmp, imgBaseDir)
         tmp = util.encodeXML(f.readline())
 
       buffer = buffer.strip()
-      fileName = 'chapter-{}'.format(index)
       if len(buffer) > 0:
+        fileName = 'chapter-{}'.format(index)
+        createChapter(fileName, title, buffer, path)
         titles.append(title)
-        ch = Chapter(fileName, title, buffer)
-        ch.write()
         buffer = ''
         index += 1
         title = getChapter(tmp)
-        tmp = util.encodeXML(f.readline())
+      tmp = util.encodeXML(f.readline())
   return titles
 
+def createChapter(fileName, title, content, path):
+  ch = Chapter(fileName, title, content, path)
+  ch.write()
+  
 def getChapter(x):
   pattern = '''\#\[chapter:    # head
         [
+          \u2606              #symbol:star
           \u0021-\u007e       #ascii symbols
           \u3041-\u30ff       #hiragana & katakana
           \u4e00-\u9fc4       #CJK common characters
@@ -294,9 +319,57 @@ def addImageIfNeed(x, path=''):
   matched = re.findall(pattern, x)
   if len(matched) != 1:
     return x
-  imgPath = os.path.join(path , matched[0][:-2])
-  return XMLElement('img').addAttribute('src', imgPath).create()
+  imageName = os.path.basename(matched[0][:-2])
+  imgPath = os.path.join('images', path , imageName)
+  imgObj = XMLElement('img')
+  imgObj.addAttribute('src', imgPath)
+  imgObj.addAttribute('alt', imageName)
+  return imgObj.create()
 
+def readMetaInfo(filePath, encoding='utf8'):
+  pattern = '''(?<=\#\[)      # head
+        [
+          :
+          \u2606
+          \u0021-\u007e       #ascii symbols
+          \u3041-\u30ff       #hiragana & katakana
+          \u4e00-\u9fc4       #CJK common characters
+        ]+
+        \]\#
+  '''
+  metaInfo = {}
+  sp = lambda x: re.search(pattern, x, re.VERBOSE).group()[:-2].split(':')
+  with open(filePath, encoding=encoding) as f:
+    tmp = f.readline()
+    while '#[headend]#' not in tmp:
+      k, v = sp(tmp)
+      metaInfo[k] = v
+      tmp = f.readline()
+  return metaInfo
+    
+def create_archive(name, path):
+  '''Create the ZIP archive.  The mimetype must be the first file in the archive 
+  and it must not be compressed.'''
 
+  epub_name = '{}.epub'.format(name)
 
+  # The EPUB must contain the META-INF and mimetype files at the root, so  
+  # we'll create the archive in the working directory first and move it later
+  os.chdir(path)    
+
+  # Open a new zipfile for writing
+  epub = zipfile.ZipFile(epub_name, 'w')
+
+  # Add the mimetype file first and set it to be uncompressed
+  epub.write('mimetype', compress_type=zipfile.ZIP_STORED)
+  
+  # For the remaining paths in the EPUB, add all of their files
+  # using normal ZIP compression
+  for p in [e for e in os.listdir('.') if os.path.isdir(e)]:
+    for f in os.listdir(p):
+      if os.path.isdir(os.path.join(p,f)):
+        for t in os.listdir(os.path.join(p,f)):
+          epub.write(os.path.join(p, f, t), compress_type=zipfile.ZIP_DEFLATED)
+      epub.write(os.path.join(p, f), compress_type=zipfile.ZIP_DEFLATED)
+  epub.close()
 
