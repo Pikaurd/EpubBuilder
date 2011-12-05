@@ -9,6 +9,7 @@
 import os
 import re
 import shutil
+import tempfile
 import zipfile
 
 from pikaurdlib.xmldocument import *
@@ -19,7 +20,8 @@ class EpubBuilder:
   __version__ = (0, 0, 3)
   def __init__(self, path='', uuid=1):
     self.txtPath = path
-    self.path = os.path.join(os.path.dirname(path), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
+#   self.path = os.path.join(os.path.dirname(path), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
+    self.path = os.path.join(tempfile.mkdtemp(), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
     self.uuid = uuid
     self.metaInfo = readMetaInfo(path)
     self.oebpsPath = os.path.join(self.path, 'OEBPS')
@@ -301,6 +303,9 @@ def getChapter(x):
           \u0021-\u007e       #ascii symbols
           \u3041-\u30ff       #hiragana & katakana
           \u4e00-\u9fc4       #CJK common characters
+          \u3000-\u3001       # two byte size symble
+          \uff01              #Exclamation mark (two byte size)
+          \uff21-\uff5a       #A-Z a-z two byte size
         ]+
         \]\#
   '''
@@ -315,7 +320,7 @@ def isBlank(x, allowWhiteSpace=False):
   return len(x.strip()) == 0
 
 def addImageIfNeed(x, path=''):
-  pattern = r'(?<=#\[img:)[\w\d/\.]+]#'
+  pattern = r'(?<=#\[img:)[\w\d/\.+-]+]#'
   matched = re.findall(pattern, x)
   if len(matched) != 1:
     return x
@@ -333,10 +338,13 @@ def readMetaInfo(filePath, encoding='utf8'):
           \u2606
           \u0021-\u007e       #ascii symbols
           \u3041-\u30ff       #hiragana & katakana
-          \u4e00-\u9fc4       #CJK common characters
+          \w                  #CJK common characters
+          \s                  #blank -> space character
+          \uff01              #Exclamation mark (two byte size)
         ]+
         \]\#
   '''
+#         \u4e00-\u9fc4       #CJK common characters
   metaInfo = {}
   sp = lambda x: re.search(pattern, x, re.VERBOSE).group()[:-2].split(':')
   with open(filePath, encoding=encoding) as f:
