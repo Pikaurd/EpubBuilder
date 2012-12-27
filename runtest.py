@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/local/bin/python3
 # -*- coding: UTF-8 -*-
 
 ###
@@ -119,7 +119,7 @@ class TestTempSplitAndCreateFile(unittest.TestCase):
 class TestTocncx(unittest.TestCase):
   @unittest.skip('succ')
   def test_create(self):    
-    toc = TOCncx('title', ['ch1', 'ch2', 'ch3'], 'thisiduid')
+    toc = TOCncx('title', 'author', ['ch1', 'ch2', 'ch3'], 'thisiduid')
     print(toc.create())
     
 class TestContentOpf(unittest.TestCase):
@@ -137,14 +137,15 @@ class TestContentOpf(unittest.TestCase):
 #@unittest.skip('tmp')
 class TestApplication(unittest.TestCase):
   def test_create(self):
-    builder = EpubBuilder('epubDir/md.txt')
+    builder = EpubBuilder('epubDir/head.txt')
     builder.createFolders()
     builder.createMimetype()
     builder.createContainer()
     builder.createChapters()
     builder.createTOCncx()
     builder.createContentOPF()
-    create_archive('md', 'epubDir/003epubtmp/')
+    create_archive('md', builder.path) #FIXME: use ISBN or Book name
+#TODO: cleanup tmp folder
 
 if __name__ == "__main__":
   unittest.main()

@@ -17,7 +17,7 @@ from pikaurdlib import util
 
 class EpubBuilder:
   '''Using text file with some tags like "<img> <chapter>" to build an epub file'''
-  __version__ = (0, 0, 3)
+  __version__ = (0, 1, 0)
   def __init__(self, path='', uuid=1):
     self.txtPath = path
 #   self.path = os.path.join(os.path.dirname(path), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
@@ -55,11 +55,16 @@ class EpubBuilder:
     self.titles = txtParseAndCreateChapter(self.txtPath, path=self.oebpsPath)
 
   def createTOCncx(self):
-    toc = TOCncx(self.metaInfo.get('title'), self.titles, self.uuid)
+    title = self.metaInfo.get('title')
+    author = self.metaInfo.get('author')
+    toc = TOCncx(title, author, self.titles, self.uuid)
     toc.writeTo(self.oebpsPath)
 
   def createContentOPF(self):
-    contentOPF = ContentOpf(self.metaInfo.get('title'), self.uuid, EpubBuilder.nameVersion(), 'zh-CN', self.oebpsPath)
+    title = self.metaInfo.get('title')
+    author = self.metaInfo.get('author')
+    coverImagePath = self.metaInfo.get('coverImage')
+    contentOPF = ContentOpf(title, self.uuid, author, 'zh-CN', self.oebpsPath, coverImagePath)
     contentOPF.writeTo()
     
   @staticmethod
@@ -113,8 +118,9 @@ class Chapter:
     
 class TOCncx:
   '''toc.ncx entity'''
-  def __init__(self, title, chapterTitles, uid):
+  def __init__(self, title, author, chapterTitles, uid):
     self.title = title
+    self.author = author
     self.chapterTitles = chapterTitles
     self.uid = uid
 
@@ -140,6 +146,11 @@ class TOCncx:
     docTitle = XMLElement('docTitle')
     docTitle.addElement(XMLElement('text').addElement(XMLText(self.title)))
     ncx.addElement(docTitle)
+    # docAuthor
+    docTitle = XMLElement('docAuthor')
+    docTitle.addElement(XMLElement('text').addElement(XMLText(self.author)))
+    ncx.addElement(docTitle)
+
     # navMap
     navMap = XMLElement('navMap')
 #    navMap = self.__addNavPoints(navMap)
@@ -178,13 +189,14 @@ class TOCncx:
 
 class ContentOpf:
   ''' Entity of content.opf'''
-  def __init__(self, title, uid, creator='EpubBuilder', language='en-US', baseDir=''):
+  def __init__(self, title, uid, creator='EpubBuilder', language='en-US', baseDir='', coverImg=''):
     #TODO add cover to epub
     self.title = title
     self.isbn = str(uid)
     self.creator = creator
     self.lang = language
     self.baseDir = baseDir
+    self.coverImage= coverImg
 
   def writeTo(self):
     createFile('content.opf', self.create(), self.baseDir)
@@ -199,6 +211,7 @@ class ContentOpf:
     package.addAttribute('unique-identifier', 'ISBN')
     package.addAttribute('version', '2.0')
     xml.addElement(package)
+
     # meta data
     metadata = XMLElement('metadata')
     title = XMLElement('dc:title').addElement(XMLText(self.title))
@@ -209,18 +222,33 @@ class ContentOpf:
     metadata.addElement(identifier)
     lang = XMLElement('dc:language').addElement(XMLText(self.lang))
     metadata.addElement(lang)
+    meta_cover = XMLElement('meta')
+    meta_cover.addAttribute('name', 'cover')
+    meta_cover.addAttribute('content', 'cover-image')
+    metadata.addElement(meta_cover)
     package.addElement(metadata)
+
     # manifest
     manifest = XMLElement('manifest')
     manifest.addElement(self.__createItem('ncx', 'toc.ncx', 'application/x-dtbncx+xml'))
     self.__addItems(manifest)
+    mani_cover = self.__createItem('cover', 'chapter-1.xhtml')
+    mani_coverImg = self.__createItem('cover-image', os.path.join('images', self.coverImage), 'image/jpeg')
+    manifest.addElement(mani_cover)
+    manifest.addElement(mani_coverImg)
     package.addElement(manifest)
-#    manifest.addElement(self.__addItem())
+
     # spine
     package.addElement(self.__createSpine())
+
     # guide 
     guide = XMLElement('guide')
-    ##TODO GUIDE for cover and toc
+    ref = XMLElement('reference')
+    ref.addAttribute('type', 'cover')
+    ref.addAttribute('title', 'Cover Image')
+    ref.addAttribute('href', 'chapter-1.html')
+    guide.addElement(ref)
+    package.addElement(guide)
     return xml.create(pretty=True)
 
   def __addItems(self, manifest):
@@ -244,6 +272,11 @@ class ContentOpf:
     ''' Create a element spine for metadata'''
     spine = XMLElement('spine')
     spine.addAttribute('toc', 'ncx')
+    # add cover
+    cover = XMLElement('itemref')
+    cover.addAttribute('idref', 'cover')
+    spine.addElement(cover)
+    # /add cover
     for ch in self.chapters:
       spine.addElement(self.__createItemRef(ch[:-6]))
     return spine
@@ -277,7 +310,7 @@ def txtParseAndCreateChapter(filePath, encoding='utf8', imgBaseDir='', path=''):
     if not isBlank(getChapter(tmp)):
       title = getChapter(tmp)
     while not isBlank(tmp):
-      while isBlank(getChapter(tmp)) and not isBlank(tmp, True):
+      while isBlank(getChapter(tmp)) and not isBlank(tmp, allowWhiteSpace=True):
         buffer += addImageIfNeed(tmp, imgBaseDir)
         tmp = util.encodeXML(f.readline())
 
@@ -320,7 +353,7 @@ def isBlank(x, allowWhiteSpace=False):
   return len(x.strip()) == 0
 
 def addImageIfNeed(x, path=''):
-  pattern = r'(?<=#\[img:)[\w\d/\.+-]+]#'
+  pattern = r'(?<=#\[img:)[\w\d/\._+-]+]#'
   matched = re.findall(pattern, x)
   if len(matched) != 1:
     return x
@@ -336,11 +369,13 @@ def readMetaInfo(filePath, encoding='utf8'):
         [
           :
           \u2606
+          \u3001-\u300f
           \u0021-\u007e       #ascii symbols
           \u3041-\u30ff       #hiragana & katakana
           \w                  #CJK common characters
           \s                  #blank -> space character
-          \uff01              #Exclamation mark (two byte size)
+          \uff01-\uff0f       #symbols (two byte size)
+          \uff5e              #～
         ]+
         \]\#
   '''
@@ -380,4 +415,7 @@ def create_archive(name, path):
           epub.write(os.path.join(p, f, t), compress_type=zipfile.ZIP_DEFLATED)
       epub.write(os.path.join(p, f), compress_type=zipfile.ZIP_DEFLATED)
   epub.close()
+
+  # move file to desktop
+  os.system('mv {} ~/Desktop/'.format(epub_name))
 
