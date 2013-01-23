@@ -1,12 +1,11 @@
 ﻿#[title:魔弹之王与战姬]#
 #[author:川口士]#
-#[illustrator:よし☆ヲ]#
-#[pubDate:2011-04-25]#
-#[translator:dying]#
 #[ISBN:9784840138574]#
 #[coverImage:nocover.jpg]#
+#[img:nocover.jpg]#
 #[headend]#
 
+#[chapter:titleWith # mark]#
 ----------------------------------------------------------------
 作者：川口士
 插图：よし☆ヲ

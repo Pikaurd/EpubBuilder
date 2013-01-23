@@ -17,7 +17,7 @@ from pikaurdlib import util
 
 class EpubBuilder:
   '''Using text file with some tags like "<img> <chapter>" to build an epub file'''
-  __version__ = (0, 1, 0)
+  __version__ = (0, 1, 1)
   def __init__(self, path='', uuid=1):
     self.txtPath = path
 #   self.path = os.path.join(os.path.dirname(path), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
@@ -278,6 +278,8 @@ class ContentOpf:
     spine.addElement(cover)
     # /add cover
     for ch in self.chapters:
+      if ch == 'chapter-1.xhtml':  # skip chapter-1 
+        continue                   # 'cause it using cover
       spine.addElement(self.__createItemRef(ch[:-6]))
     return spine
 
@@ -291,6 +293,7 @@ class ContentOpf:
 
   def getChapters(self):
     self.chapters = [e for e in os.listdir(self.baseDir) if e.startswith('chapter-') and e.endswith('xhtml')]
+    self.chapters.sort(key=lambda x:int(x[8:-6]))
 
 #for unit test
   def createItem(self, rid, href, mediaType):
@@ -303,7 +306,7 @@ def createFile(name, content, path, encoding='utf8'):
 def txtParseAndCreateChapter(filePath, encoding='utf8', imgBaseDir='', path=''):
   buffer = ''
   index = 1
-  title = 'info'
+  title = 'Cover'
   titles = []
   with open(filePath, encoding=encoding) as f:
     tmp = util.encodeXML(f.readline())
@@ -311,6 +314,9 @@ def txtParseAndCreateChapter(filePath, encoding='utf8', imgBaseDir='', path=''):
       title = getChapter(tmp)
     while not isBlank(tmp):
       while isBlank(getChapter(tmp)) and not isBlank(tmp, allowWhiteSpace=True):
+        if tmp.startswith('#[') and not tmp.startswith('#[img'): # drop meta
+          tmp = util.encodeXML(f.readline())
+          continue
         buffer += addImageIfNeed(tmp, imgBaseDir)
         tmp = util.encodeXML(f.readline())
 
@@ -334,11 +340,14 @@ def getChapter(x):
         [
           \u2606              #symbol:star
           \u0021-\u007e       #ascii symbols
+          \u00a1-\u00ff       #ascii symbols
+          \u2010-\u2027        # semicolon?
+          \u2460-\u26b3        # symbol
+          \u2600-\u2640        # symbol
+          \u3000-\u303f       # two byte size symble
           \u3041-\u30ff       #hiragana & katakana
           \u4e00-\u9fc4       #CJK common characters
-          \u3000-\u3001       # two byte size symble
-          \uff01              #Exclamation mark (two byte size)
-          \uff21-\uff5a       #A-Z a-z two byte size
+          \uff01-\uff66       #ASCII mark (two byte size)
         ]+
         \]\#
   '''
@@ -419,3 +428,6 @@ def create_archive(name, path):
   # move file to desktop
   os.system('mv {} ~/Desktop/'.format(epub_name))
 
+if __name__ == '__main__':
+  import sys
+  txtParseAndCreateChapter(sys.argv[1])
