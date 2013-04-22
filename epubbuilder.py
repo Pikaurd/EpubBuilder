@@ -303,11 +303,42 @@ def createFile(name, content, path, encoding='utf8'):
   with open(os.path.join(path, name), 'w', encoding=encoding) as f:
     f.write(content)
 
+###########################################################################
+def removeImgTag(x):
+  ''' Remove #[img:xxx]# tag, replace with html image tag '''
+  xs = x.split('\n')
+  result = []
+  for s in xs:
+    if s.startswith('#[') and not s.startswith('#[img'): continue
+    if s.startswith('#[img'):
+      result.append(addImageIfNeed(s))
+      continue
+    result.append(s)
+  return '\n'.join(result)
+
+###########################################################################
+
 def txtParseAndCreateChapter(filePath, encoding='utf8', imgBaseDir='', path=''):
+  titles = []
+  titlePattern = '(?<=#\[chapter:)[^\]]*(?=\]#)'
+  with open(filePath, encoding=encoding) as f:
+    c = f.read()
+    titles = re.findall(titlePattern, c)
+    titles.insert(0, 'Cover')
+    cs = re.split('#\[chapter:', c)
+
+    assert(len(titles) == len(cs))
+
+    for i in range(len(cs)):
+      fileName = 'chapter-{}'.format(i + 1)
+      createChapter(fileName, titles[i], removeImgTag(cs[i]), path)
+
+  return titles     
+
+
+
   buffer = ''
   index = 1
-  title = 'Cover'
-  titles = []
   with open(filePath, encoding=encoding) as f:
     tmp = util.encodeXML(f.readline())
     if not isBlank(getChapter(tmp)):
@@ -336,25 +367,15 @@ def createChapter(fileName, title, content, path):
   ch.write()
   
 def getChapter(x):
-  pattern = '''\#\[chapter:    # head
-        [
-          \u2606              #symbol:star
-          \u0021-\u007e       #ascii symbols
-          \u00a1-\u00ff       #ascii symbols
-          \u2010-\u2027        # semicolon?
-          \u2460-\u26b3        # symbol
-          \u2600-\u2640        # symbol
-          \u3000-\u303f       # two byte size symble
-          \u3041-\u30ff       #hiragana & katakana
-          \u4e00-\u9fc4       #CJK common characters
-          \uff01-\uff66       #ASCII mark (two byte size)
-        ]+
-        \]\#
-  '''
-  result = re.findall(pattern, x, re.VERBOSE)
-  if len(result) != 1:
-    return ''
-  return result[0][10:-2]  #drop prefix and suffix
+  pattern = '(?<=#\[chapter:)[^\]]*(?=\])'
+  try:
+    result = re.search(pattern, x).group()
+  except:
+    result = ''
+  return result
+#  if len(result) != 1:
+#    return ''
+#  return result[0][10:-2]  #drop prefix and suffix
 
 def isBlank(x, allowWhiteSpace=False):
   if allowWhiteSpace:
@@ -362,11 +383,17 @@ def isBlank(x, allowWhiteSpace=False):
   return len(x.strip()) == 0
 
 def addImageIfNeed(x, path=''):
-  pattern = r'(?<=#\[img:)[\w\d/\._+-]+]#'
-  matched = re.findall(pattern, x)
-  if len(matched) != 1:
+  #TODO: using search
+  #pattern = r'(?<=#\[img:)[\w\d/\._+-]+]#'
+  pattern = '(?<=#\[img:)[^#]*(?=\]#)'
+  #matched = re.findall(pattern, x)
+  #if len(matched) != 1:
+  #  return x
+  search_result = re.search(pattern, x)
+  if not search_result:
     return x
-  imageName = os.path.basename(matched[0][:-2])
+  #imageName = os.path.basename(matched[0][:-2])
+  imageName = os.path.basename(search_result.group())
   imgPath = os.path.join('images', path , imageName)
   imgObj = XMLElement('img')
   imgObj.addAttribute('src', imgPath)
@@ -374,27 +401,29 @@ def addImageIfNeed(x, path=''):
   return imgObj.create()
 
 def readMetaInfo(filePath, encoding='utf8'):
-  pattern = '''(?<=\#\[)      # head
-        [
-          :
-          \u2606
-          \u3001-\u300f
-          \u0021-\u007e       #ascii symbols
-          \u3041-\u30ff       #hiragana & katakana
-          \w                  #CJK common characters
-          \s                  #blank -> space character
-          \uff01-\uff0f       #symbols (two byte size)
-          \uff5e              #～
-        ]+
-        \]\#
-  '''
+#  pattern = '''(?<=\#\[)      # head
+#        [
+#          :
+#          \u2606
+#          \u3001-\u300f
+#          \u0021-\u007e       #ascii symbols
+#          \u3041-\u30ff       #hiragana & katakana
+#          \w                  #CJK common characters
+#          \s                  #blank -> space character
+#          \uff01-\uff0f       #symbols (two byte size)
+#          \uff5e              #～
+#        ]+
+#        \]\#
+#  '''
 #         \u4e00-\u9fc4       #CJK common characters
+  metaSearch = re.compile(r'#\[(\w+):([^]].*)\]#')
   metaInfo = {}
-  sp = lambda x: re.search(pattern, x, re.VERBOSE).group()[:-2].split(':')
   with open(filePath, encoding=encoding) as f:
     tmp = f.readline()
     while '#[headend]#' not in tmp:
-      k, v = sp(tmp)
+      if tmp.strip() == '':
+        continue
+      k, v = metaSearch.search(tmp).groups()
       metaInfo[k] = v
       tmp = f.readline()
   return metaInfo
@@ -430,4 +459,4 @@ def create_archive(name, path):
 
 if __name__ == '__main__':
   import sys
-  txtParseAndCreateChapter(sys.argv[1])
+  print(txtParseAndCreateChapter(sys.argv[1]))
