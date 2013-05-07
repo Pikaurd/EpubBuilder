@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 import sys
+import argparse
+
+from os.path import basename
 
 from epubbuilder import *
 
@@ -15,12 +18,20 @@ def createEpub(src, fname):
   create_archive(fname, builder.path)
 
 if __name__ == "__main__":
-  if len(sys.argv) <= 1:
-    print("Usage: {} src filename".format(sys.argv[0]))
-    sys.exit(1)
-  src = sys.argv[1]
-  fname = sys.argv[2]
-  print("src: {}\nfile name: {}".format(src, fname))
-  createEpub(src, fname)
-  print("finished")
+  desc = 'EpubBuilder: A tool convert formatted text to epub'
+  parser = argparse.ArgumentParser(description=desc)
+  parser.add_argument('src', help='Source text file')
+  parser.add_argument('-f'
+                     , '--filename'
+                     , type=str
+                     , help='Target file name')
+  args = parser.parse_args()
+
+  src = args.src
+  filename = basename(src)
+  if args.filename:
+    filename = args.filename
+
+  print('Convert {} -> {}'.format(src, filename))
+  createEpub(src, filename)
   sys.exit(0)

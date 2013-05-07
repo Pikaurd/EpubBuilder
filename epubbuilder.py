@@ -310,6 +310,7 @@ def removeImgTag(x):
   result = []
   for s in xs:
     if s.startswith('#[') and not s.startswith('#[img'): continue
+    if s.startswith('#[imgDir'): continue
     if s.startswith('#[img'):
       result.append(addImageIfNeed(s))
       continue
@@ -325,42 +326,16 @@ def txtParseAndCreateChapter(filePath, encoding='utf8', imgBaseDir='', path=''):
     c = f.read()
     titles = re.findall(titlePattern, c)
     titles.insert(0, 'Cover')
-    cs = re.split('#\[chapter:', c)
+    cs = re.split('#\[chapter:[^\]]*\]#', c)
 
     assert(len(titles) == len(cs))
 
     for i in range(len(cs)):
       fileName = 'chapter-{}'.format(i + 1)
-      createChapter(fileName, titles[i], removeImgTag(cs[i]), path)
+      content = titles[i] + '\n' + removeImgTag(cs[i])
+      createChapter(fileName, titles[i], content, path)
 
   return titles     
-
-
-
-  buffer = ''
-  index = 1
-  with open(filePath, encoding=encoding) as f:
-    tmp = util.encodeXML(f.readline())
-    if not isBlank(getChapter(tmp)):
-      title = getChapter(tmp)
-    while not isBlank(tmp):
-      while isBlank(getChapter(tmp)) and not isBlank(tmp, allowWhiteSpace=True):
-        if tmp.startswith('#[') and not tmp.startswith('#[img'): # drop meta
-          tmp = util.encodeXML(f.readline())
-          continue
-        buffer += addImageIfNeed(tmp, imgBaseDir)
-        tmp = util.encodeXML(f.readline())
-
-      buffer = buffer.strip()
-      if len(buffer) > 0:
-        fileName = 'chapter-{}'.format(index)
-        createChapter(fileName, title, buffer, path)
-        titles.append(title)
-        buffer = ''
-        index += 1
-        title = getChapter(tmp)
-      tmp = util.encodeXML(f.readline())
-  return titles
 
 def createChapter(fileName, title, content, path):
   ch = Chapter(fileName, title, content, path)
@@ -383,16 +358,10 @@ def isBlank(x, allowWhiteSpace=False):
   return len(x.strip()) == 0
 
 def addImageIfNeed(x, path=''):
-  #TODO: using search
-  #pattern = r'(?<=#\[img:)[\w\d/\._+-]+]#'
   pattern = '(?<=#\[img:)[^#]*(?=\]#)'
-  #matched = re.findall(pattern, x)
-  #if len(matched) != 1:
-  #  return x
   search_result = re.search(pattern, x)
   if not search_result:
     return x
-  #imageName = os.path.basename(matched[0][:-2])
   imageName = os.path.basename(search_result.group())
   imgPath = os.path.join('images', path , imageName)
   imgObj = XMLElement('img')
@@ -401,21 +370,6 @@ def addImageIfNeed(x, path=''):
   return imgObj.create()
 
 def readMetaInfo(filePath, encoding='utf8'):
-#  pattern = '''(?<=\#\[)      # head
-#        [
-#          :
-#          \u2606
-#          \u3001-\u300f
-#          \u0021-\u007e       #ascii symbols
-#          \u3041-\u30ff       #hiragana & katakana
-#          \w                  #CJK common characters
-#          \s                  #blank -> space character
-#          \uff01-\uff0f       #symbols (two byte size)
-#          \uff5e              #～
-#        ]+
-#        \]\#
-#  '''
-#         \u4e00-\u9fc4       #CJK common characters
   metaSearch = re.compile(r'#\[(\w+):([^]].*)\]#')
   metaInfo = {}
   with open(filePath, encoding=encoding) as f:
@@ -455,7 +409,7 @@ def create_archive(name, path):
   epub.close()
 
   # move file to desktop
-  os.system('mv {} ~/Desktop/'.format(epub_name))
+  os.system('mv "{}" ~/Desktop/'.format(epub_name))
 
 if __name__ == '__main__':
   import sys
