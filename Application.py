@@ -11,11 +11,13 @@ def createEpub(src, fname):
   builder = EpubBuilder(src)
   builder.createFolders()
   builder.createMimetype()
+  builder.createCSSFile()
   builder.createContainer()
   builder.createChapters()
   builder.createTOCncx()
   builder.createContentOPF()
   create_archive(fname, builder.path)
+  builder.clear()
 
 if __name__ == "__main__":
   desc = 'EpubBuilder: A tool convert formatted text to epub'

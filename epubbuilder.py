@@ -20,7 +20,6 @@ class EpubBuilder:
   __version__ = (0, 1, 1)
   def __init__(self, path='', uuid=1):
     self.txtPath = path
-#   self.path = os.path.join(os.path.dirname(path), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
     self.path = os.path.join(tempfile.mkdtemp(), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
     self.uuid = uuid
     self.metaInfo = readMetaInfo(path)
@@ -39,6 +38,12 @@ class EpubBuilder:
     name = 'mimetype'
     content = 'application/epub+zip'
     createFile(name, content, self.path)
+
+  def createCSSFile(self):
+    path = os.path.join(self.path, 'OEBPS/css/main.css')
+    with open(path, 'w') as f:
+      f.write('body { white-space: pre-wrap; }\n')
+      f.write('h1 { text-align: center; }\n')
 
   def createContainer(self):
     xml = XMLDocument()
@@ -66,6 +71,11 @@ class EpubBuilder:
     coverImagePath = self.metaInfo.get('coverImage')
     contentOPF = ContentOpf(title, self.uuid, author, 'zh-CN', self.oebpsPath, coverImagePath)
     contentOPF.writeTo()
+
+  def clear(self):
+    ''' Delete tmp files'''
+    print('Deleting ' + self.path)
+    #os.remove(self.path)
     
   @staticmethod
   def nameVersion():
@@ -85,9 +95,8 @@ class Chapter:
     
 
   def __convertContentToXML(self, content):
-#    content = util.encodeXML(content)
-    content = XMLText(re.sub('\n', '<br/>', content), noEscape=True)
-    return content
+    content = '<h1>' + self.title + '</h1>' + content # Title
+    return XMLText(re.sub('\n', '<br/>', content), noEscape=True)
 
   def write(self, pretty=False):
     createFile(self.index+'.xhtml', self.create(pretty), self.path) 
@@ -101,6 +110,11 @@ class Chapter:
     html.addAttribute('xml:lang', 'en')
     html.addAttribute('xmlns', 'http://www.w3.org/1999/xhtml')
     head = XMLElement('head')
+    cssLink = XMLElement('link')
+    cssLink.addAttribute('rel', 'stylesheet')
+    cssLink.addAttribute('type', 'text/css')
+    cssLink.addAttribute('href', 'css/main.css')
+    head.addElement(cssLink)
     title = XMLElement('title')
     title.addElement(XMLText(self.title))
     head.addElement(title)
@@ -108,7 +122,6 @@ class Chapter:
 
     #TODO add external module to config format
     body = XMLElement('body')
-    body.addAttribute('style', 'white-space:pre-wrap')
     div = XMLElement('div')
     div.addElement(self.content)
     body.addElement(div)
@@ -332,7 +345,8 @@ def txtParseAndCreateChapter(filePath, encoding='utf8', imgBaseDir='', path=''):
 
     for i in range(len(cs)):
       fileName = 'chapter-{}'.format(i + 1)
-      content = titles[i] + '\n' + removeImgTag(cs[i])
+      #content = titles[i] + '\n' + removeImgTag(cs[i])
+      content = removeImgTag(cs[i])
       createChapter(fileName, titles[i], content, path)
 
   return titles     
