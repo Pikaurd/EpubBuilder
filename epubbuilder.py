@@ -17,7 +17,7 @@ from pikaurdlib import util
 
 class EpubBuilder:
   '''Using text file with some tags like "<img> <chapter>" to build an epub file'''
-  __version__ = (0, 1, 1)
+  __version__ = (0, 1, 3)
   def __init__(self, path='', uuid=1):
     self.txtPath = path
     self.path = os.path.join(tempfile.mkdtemp(), '{v[0]}{v[1]}{v[2]}epubtmp'.format(v=EpubBuilder.__version__))
@@ -43,7 +43,7 @@ class EpubBuilder:
     path = os.path.join(self.path, 'OEBPS/css/main.css')
     with open(path, 'w') as f:
       f.write('body { white-space: pre-wrap; }\n')
-      f.write('h1 { text-align: center; }\n')
+      f.write('h2 { text-align: center; }\n')
 
   def createContainer(self):
     xml = XMLDocument()
@@ -95,7 +95,7 @@ class Chapter:
     
 
   def __convertContentToXML(self, content):
-    content = '<h1>' + self.title + '</h1>' + content # Title
+    content = '<h2>' + self.title + '</h2>' + content # Title
     return XMLText(re.sub('\n', '<br/>', content), noEscape=True)
 
   def write(self, pretty=False):
@@ -214,6 +214,14 @@ class ContentOpf:
   def writeTo(self):
     createFile('content.opf', self.create(), self.baseDir)
 
+  def addCoverToManifest(self, manifest):
+    if self.coverImage == '' or self.coverImage == None: return
+
+    mani_cover = self.__createItem('cover', 'chapter-1.xhtml')
+    mani_coverImg = self.__createItem('cover-image', os.path.join('images', self.coverImage), 'image/jpeg')
+    manifest.addElement(mani_cover)
+    manifest.addElement(mani_coverImg)
+    
   def create(self):
     self.getChapters()
     xml = XMLDocument()
@@ -245,10 +253,7 @@ class ContentOpf:
     manifest = XMLElement('manifest')
     manifest.addElement(self.__createItem('ncx', 'toc.ncx', 'application/x-dtbncx+xml'))
     self.__addItems(manifest)
-    mani_cover = self.__createItem('cover', 'chapter-1.xhtml')
-    mani_coverImg = self.__createItem('cover-image', os.path.join('images', self.coverImage), 'image/jpeg')
-    manifest.addElement(mani_cover)
-    manifest.addElement(mani_coverImg)
+    self.addCoverToManifest(manifest)
     package.addElement(manifest)
 
     # spine
